@@ -42,8 +42,8 @@ def image_stream(imagedir, calib, stride):
             image = cv2.undistort(image, K, calib[4:])
 
         h0, w0, _ = image.shape
-        h1 = int(h0 * np.sqrt((384 * 512) / (h0 * w0)))
-        w1 = int(w0 * np.sqrt((384 * 512) / (h0 * w0)))
+        h1 = int(h0 * np.sqrt((512 * 768) / (h0 * w0)))
+        w1 = int(w0 * np.sqrt((512 * 768) / (h0 * w0)))
 
         image = cv2.resize(image, (w1, h1))
         image = image[:h1-h1%8, :w1-w1%8]
@@ -55,10 +55,14 @@ def image_stream(imagedir, calib, stride):
 
         yield t, image[None], intrinsics
 
+def make_reconstruction_dirs(reconstruction_path):
+    
+    from pathlib import Path
+
+    Path("{}".format(reconstruction_path)).mkdir(parents=True, exist_ok=True)
 
 def save_reconstruction(droid, reconstruction_path):
 
-    from pathlib import Path
     import random
     import string
 
@@ -68,13 +72,12 @@ def save_reconstruction(droid, reconstruction_path):
     disps = droid.video.disps_up[:t].cpu().numpy()
     poses = droid.video.poses[:t].cpu().numpy()
     intrinsics = droid.video.intrinsics[:t].cpu().numpy()
-
-    Path("reconstructions/{}".format(reconstruction_path)).mkdir(parents=True, exist_ok=True)
-    np.save("reconstructions/{}/tstamps.npy".format(reconstruction_path), tstamps)
-    np.save("reconstructions/{}/images.npy".format(reconstruction_path), images)
-    np.save("reconstructions/{}/disps.npy".format(reconstruction_path), disps)
-    np.save("reconstructions/{}/poses.npy".format(reconstruction_path), poses)
-    np.save("reconstructions/{}/intrinsics.npy".format(reconstruction_path), intrinsics)
+    
+    np.save("{}/tstamps.npy".format(reconstruction_path), tstamps)
+    np.save("{}/images.npy".format(reconstruction_path), images)
+    np.save("{}/disps.npy".format(reconstruction_path), disps)
+    np.save("{}/poses.npy".format(reconstruction_path), poses)
+    np.save("{}/intrinsics.npy".format(reconstruction_path), intrinsics)
 
 
 if __name__ == '__main__':
@@ -112,6 +115,7 @@ if __name__ == '__main__':
 
     # need high resolution depths
     if args.reconstruction_path is not None:
+        make_reconstruction_dirs(args.reconstruction_path)
         args.upsample = True
 
     tstamps = []
@@ -132,3 +136,4 @@ if __name__ == '__main__':
         save_reconstruction(droid, args.reconstruction_path)
 
     traj_est = droid.terminate(image_stream(args.imagedir, args.calib, args.stride))
+    np.save("{}/traj_est.npy".format(args.reconstruction_path), traj_est)
