@@ -1,11 +1,5 @@
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
-# Metadata
-LABEL maintainer="rajahaseeb147@gmail.com" \
-    project-name="Droid-SLAM" \
-    com.droid-slam.version="0.0.1-alpha" \
-    com.droid-slam.realease-data="2023.01.20"
-
 # Set arguments and env variables
 ARG DEBIAN_FRONTEND=noninteractive
 
