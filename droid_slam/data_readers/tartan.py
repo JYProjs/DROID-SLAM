@@ -37,10 +37,10 @@ class TartanAir(RGBDDataset):
         scene_info = {}
         scenes = glob.glob(osp.join(self.root, '*/*/*/*'))
         for scene in tqdm(sorted(scenes)):
-            images = sorted(glob.glob(osp.join(scene, 'image_left/*.png')))
-            depths = sorted(glob.glob(osp.join(scene, 'depth_left/*.npy')))
+            images = sorted(glob.glob(osp.join(scene, 'images_raw/*.png')))
+            depths = sorted(glob.glob(osp.join(scene, 'metric_depth/*.npy')))
             
-            poses = np.loadtxt(osp.join(scene, 'pose_left.txt'), delimiter=' ')
+            poses = np.loadtxt(osp.join(scene, 'poses.txt'), delimiter=' ')
             poses = poses[:, [1, 2, 0, 4, 5, 3, 6]]
             poses[:,:3] /= TartanAir.DEPTH_SCALE
             intrinsics = [TartanAir.calib_read()] * len(images)
@@ -56,7 +56,7 @@ class TartanAir(RGBDDataset):
 
     @staticmethod
     def calib_read():
-        return np.array([320.0, 320.0, 320.0, 240.0])
+        return np.array([2383.4, 2374.8, 1706.2, 1020.0])
 
     @staticmethod
     def image_read(image_file):
