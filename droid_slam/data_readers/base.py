@@ -66,7 +66,7 @@ class RGBDDataset(data.Dataset):
     def depth_read(depth_file):
         return np.load(depth_file)
 
-    def build_frame_graph(self, poses, depths, intrinsics, f=16, max_flow=256):
+    def build_frame_graph(self, poses, depths, intrinsics, f=16, max_flow=0):
         """ compute optical flow distance between all pairs of frames """
         def read_disp(fn):
             depth = self.__class__.depth_read(fn)[f//2::f, f//2::f]
@@ -86,7 +86,7 @@ class RGBDDataset(data.Dataset):
 
         graph = {}
         for i in range(d.shape[0]):
-            j, = np.where(d[i] < max_flow)
+            j, = np.where(d[i] >= max_flow)
             graph[i] = (j, d[i,j])
 
         return graph

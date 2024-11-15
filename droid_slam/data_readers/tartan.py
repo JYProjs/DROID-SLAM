@@ -35,9 +35,9 @@ class TartanAir(RGBDDataset):
         print("Building TartanAir dataset")
 
         scene_info = {}
-        scenes = glob.glob(osp.join(self.root, '*/*/*/*'))
+        scenes = glob.glob(osp.join(self.root, '*/'))
         for scene in tqdm(sorted(scenes)):
-            images = sorted(glob.glob(osp.join(scene, 'images_raw/*.png')))
+            images = sorted(glob.glob(osp.join(scene, 'images_raw/*.jpg')))
             depths = sorted(glob.glob(osp.join(scene, 'metric_depth/*.npy')))
             
             poses = np.loadtxt(osp.join(scene, 'poses.txt'), delimiter=' ')

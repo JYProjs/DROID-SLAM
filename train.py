@@ -23,6 +23,7 @@ from logger import Logger
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+import wandb
 
 
 def setup_ddp(gpu, args):
@@ -74,6 +75,9 @@ def train(gpu, args):
     should_keep_training = True
     total_steps = 0
 
+    # wandb.init
+    run = wandb.init(project="droid_slam_laparoscope", config=args, save_code=True)
+
     while should_keep_training:
         for i_batch, item in enumerate(train_loader):
             optimizer.zero_grad()
@@ -122,6 +126,16 @@ def train(gpu, args):
             metrics.update(res_metrics)
             metrics.update(flo_metrics)
 
+            wandb.log(
+                {
+                    "geo_loss":geo_loss,
+                    "res_loss":res_loss,
+                    "flo_loss":flo_loss,
+                    "loss":loss.item(),
+                    "lr":optimizer.param_groups[0]["lr"]
+                },
+                step=total_steps)
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             optimizer.step()
             scheduler.step()
@@ -132,13 +146,22 @@ def train(gpu, args):
                 logger.push(metrics)
 
             if total_steps % 10000 == 0 and gpu == 0:
-                PATH = 'checkpoints/%s_%06d.pth' % (args.name, total_steps)
-                torch.save(model.state_dict(), PATH)
+                checkpoint = {
+                    'params':args,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict()
+                }
+                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/11142024/%s/%s_%06d.pth' % (run.id, args.name, total_steps)
+                torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
                 should_keep_training = False
                 break
-
+    wandb.finish(
+        exit_code = 0,
+        quiet = 0,
+    )
     dist.destroy_process_group()
                 
 
