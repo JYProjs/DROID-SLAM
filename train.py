@@ -152,7 +152,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/11142024/%s/%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/11142024/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -205,6 +205,6 @@ if __name__ == '__main__':
     args.world_size = args.gpus
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12356'
+    os.environ['MASTER_PORT'] = '12456'
     mp.spawn(train, nprocs=args.gpus, args=(args,))
 
