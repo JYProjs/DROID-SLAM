@@ -55,8 +55,23 @@ def train(gpu, args):
 
     model = DDP(model, device_ids=[gpu], find_unused_parameters=False)
 
+    # lod pretrained weight
+    # if args.ckpt is not None:
+    #     ckpt = torch.load(args.ckpt)
+    #     model.load_state_dict(ckpt['model_state_dict'])
+    #     optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+    #     scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+
+    # load droid.pth
     if args.ckpt is not None:
-        model.load_state_dict(torch.load(args.ckpt))
+        state_dict = torch.load(args.ckpt)
+
+        state_dict["module.update.weight.2.weight"] = state_dict["module.update.weight.2.weight"][:2]
+        state_dict["module.update.weight.2.bias"] = state_dict["module.update.weight.2.bias"][:2]
+        state_dict["module.update.delta.2.weight"] = state_dict["module.update.delta.2.weight"][:2]
+        state_dict["module.update.delta.2.bias"] = state_dict["module.update.delta.2.bias"][:2]
+
+        model.load_state_dict(state_dict)
 
     # fetch dataloader
     db = dataset_factory(['tartan'], datapath=args.datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
@@ -69,14 +84,20 @@ def train(gpu, args):
     # fetch optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, 
-        args.lr, args.steps, pct_start=0.01, cycle_momentum=False)
+    args.lr, args.steps, pct_start=0.01, cycle_momentum=False)
 
     logger = Logger(args.name, scheduler)
     should_keep_training = True
     total_steps = 0
+    # log_freq = 10
 
     # wandb.init
     run = wandb.init(project="droid_slam_laparoscope", config=args, save_code=True)
+
+    # geo_loss_total = 0
+    # flo_loss_total = 0
+    # res_loss_total = 0
+    # loss_total = 0
 
     while should_keep_training:
         for i_batch, item in enumerate(train_loader):
@@ -125,16 +146,31 @@ def train(gpu, args):
             metrics.update(geo_metrics)
             metrics.update(res_metrics)
             metrics.update(flo_metrics)
+            
+            # geo_loss_total += geo_loss
+            # flo_loss_total += flo_loss
+            # res_loss_total += res_loss
+            # loss_total += loss.item()
 
+            # if (total_steps+1) % log_freq == 0:
+            #     geo_loss_avg = geo_loss_total / log_freq
+            #     flo_loss_avg = flo_loss_total / log_freq
+            #     res_loss_avg = res_loss_total / log_freq
+            #     loss_avg = loss_total / log_freq
             wandb.log(
                 {
                     "geo_loss":geo_loss,
                     "res_loss":res_loss,
                     "flo_loss":flo_loss,
-                    "loss":loss.item(),
+                    "loss":loss,
                     "lr":optimizer.param_groups[0]["lr"]
                 },
                 step=total_steps)
+                
+                # geo_loss_total = 0
+                # flo_loss_total = 0
+                # res_loss_total = 0
+                # loss_total = 0
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
             optimizer.step()
@@ -152,7 +188,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/11142024/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/DROID_SLAM/trained_weights/tartanair_train/12232024/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -177,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
     parser.add_argument('--steps', type=int, default=250000)
-    parser.add_argument('--lr', type=float, default=0.00025)
+    parser.add_argument('--lr', type=float, default=2.5e-4)
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
