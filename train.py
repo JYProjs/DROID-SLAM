@@ -146,6 +146,11 @@ def train(gpu, args):
             metrics.update(geo_metrics)
             metrics.update(res_metrics)
             metrics.update(flo_metrics)
+
+            
+            rot_error = metrics.get('rot_error')
+            tr_error = metrics.get('tr_error')
+            f_error = metrics.get('f_error')
             
             # geo_loss_total += geo_loss
             # flo_loss_total += flo_loss
@@ -163,7 +168,10 @@ def train(gpu, args):
                     "res_loss":res_loss,
                     "flo_loss":flo_loss,
                     "loss":loss,
-                    "lr":optimizer.param_groups[0]["lr"]
+                    "lr":optimizer.param_groups[0]["lr"],
+                    "rot_error":rot_error,
+                    "tr_error":tr_error,
+                    "flo_error":f_error
                 },
                 step=total_steps)
                 
@@ -188,7 +196,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/tartanair_train/12232024/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/DROID_SLAM/trained_weights/fine_tune_droid/01312025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -213,7 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
     parser.add_argument('--steps', type=int, default=250000)
-    parser.add_argument('--lr', type=float, default=2.5e-4)
+    parser.add_argument('--lr', type=float, default=2.5e-5)
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
