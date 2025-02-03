@@ -74,8 +74,9 @@ WORKDIR /root
 RUN git clone --recursive https://github.com/JYProjs/DROID-SLAM.git
 
 # Install extensions
+# pip install -e
 RUN cd DROID-SLAM && \
-    python setup.py install
+    python setup.py develop
 
 # Cleanup
 RUN rm -rf DROID_SLAM
