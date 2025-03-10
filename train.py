@@ -55,7 +55,7 @@ def train(gpu, args):
 
     model = DDP(model, device_ids=[gpu], find_unused_parameters=False)
 
-    # lod pretrained weight
+    # load pretrained weight
     # if args.ckpt is not None:
     #     ckpt = torch.load(args.ckpt)
     #     model.load_state_dict(ckpt['model_state_dict'])
@@ -73,13 +73,19 @@ def train(gpu, args):
 
         model.load_state_dict(state_dict)
 
-    # fetch dataloader
+    # fetch dataloaders
     db = dataset_factory(['tartan'], datapath=args.datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
+    # val_db = dataset_factory(['tartan'], datapath=args.val_datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
 
+    # create distributed sampler
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         db, shuffle=True, num_replicas=args.world_size, rank=gpu)
+    # val_sampler = torch.utils.data.distributed.DistributedSampler(
+    #     val_db, shuffle=False, num_replicas=args.world_size, rank=gpu)
 
     train_loader = DataLoader(db, batch_size=args.batch, sampler=train_sampler, num_workers=2)
+    # val_loader = DataLoader(val_db, batch_size=2, sampler=val_sampler, num_workers=2)
+
 
     # fetch optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
@@ -142,15 +148,47 @@ def train(gpu, args):
                 Gs = poses_est[-1].detach()
                 disp0 = disps_est[-1][:,:,3::8,3::8].detach()
 
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+            optimizer.step()
+            scheduler.step()
+            
+            ## TRAINING METRICS
             metrics = {}
             metrics.update(geo_metrics)
             metrics.update(res_metrics)
             metrics.update(flo_metrics)
-
-            
+            # Acquire quantitative metrics
             rot_error = metrics.get('rot_error')
             tr_error = metrics.get('tr_error')
             f_error = metrics.get('f_error')
+
+            # # validation loop
+            # if gpu == 0 and total_steps % 1000 == 0:
+            #     model.eval()
+            #     with torch.no_grad():
+            #         for v_batch, val_item in enumerate(val_loader):
+            #             images, poses, disps, intrinsics = [x.to('cuda') for x in val_item]
+
+            #             # convert poses w2c -> c2w
+            #             Ps = SE3(poses).inv()
+            #             Gs = SE3.IdentityLike(Ps)
+
+            #             # fix first to camera poses
+            #             Gs.data[:,0] = Ps.data[:,0].clone()
+            #             Gs.data[:,1:] = Ps.data[:,[1]].clone()
+            #             disp0 = torch.ones_like(disps[:,:,3::8,3::8])
+
+            #             val_graph = OrderedDict()
+            #             for i in range(N):
+            #                 val_graph[i] = [j for j in range(N) if i!=j and abs(i-j) <= 2]
+
+            #             poses_est, disps_est, residuals = model(Gs, images, disp0, intrinsics / 8.0,
+            #                 graph=val_graph, num_steps=args.iters, fixedp=2)
+
+            #             geo_loss, geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
+            #             res_loss, res_metrics = losses.residual_loss(residuals)
+            #             flo_loss, flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics)
             
             # geo_loss_total += geo_loss
             # flo_loss_total += flo_loss
@@ -162,6 +200,8 @@ def train(gpu, args):
             #     flo_loss_avg = flo_loss_total / log_freq
             #     res_loss_avg = res_loss_total / log_freq
             #     loss_avg = loss_total / log_freq
+
+            
             wandb.log(
                 {
                     "geo_loss":geo_loss,
@@ -180,9 +220,7 @@ def train(gpu, args):
                 # res_loss_total = 0
                 # loss_total = 0
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-            optimizer.step()
-            scheduler.step()
+
             
             total_steps += 1
 
@@ -196,7 +234,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/fine_tune_droid/01312025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/02282025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -215,19 +253,20 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='bla', help='name your experiment')
     parser.add_argument('--ckpt', help='checkpoint to restore')
     parser.add_argument('--datasets', nargs='+', help='lists of datasets for training')
-    parser.add_argument('--datapath', default='datasets/TartanAir', help="path to dataset directory")
+    parser.add_argument('--datapath', default='datasets/TartanAir', help="path to training dataset directory")
+    parser.add_argument('--val_datapath', help="path to validation dataset directory")
     parser.add_argument('--gpus', type=int, default=4)
 
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
     parser.add_argument('--steps', type=int, default=250000)
-    parser.add_argument('--lr', type=float, default=2.5e-5)
+    parser.add_argument('--lr', type=float, default=2.5e-8)
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
     parser.add_argument('--w1', type=float, default=10.0)
-    parser.add_argument('--w2', type=float, default=0.01)
-    parser.add_argument('--w3', type=float, default=0.05)
+    parser.add_argument('--w2', type=float, default=0.001)
+    parser.add_argument('--w3', type=float, default=0.025)
 
     parser.add_argument('--fmin', type=float, default=8.0)
     parser.add_argument('--fmax', type=float, default=96.0)
