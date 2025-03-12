@@ -1,3 +1,4 @@
+import os
 import torch
 import lietorch
 import numpy as np
@@ -49,8 +50,15 @@ class Droid:
 
         print(weights)
         self.net = DroidNet()
-        state_dict = OrderedDict([
-            (k.replace("module.", ""), v) for (k, v) in torch.load(weights).items()])
+
+        # Load droid.pth
+        if os.path.split(weights)[1] ==  "droid.pth":
+            state_dict = OrderedDict([(k.replace("module.", ""), v) for (k, v) in torch.load(weights).items()])
+
+        # Load pretrained weights
+        else:
+            state_dict = OrderedDict([(k.replace("module.", ""), v) for (k, v) in torch.load(weights)['model_state_dict'].items()])
+        
 
         state_dict["update.weight.2.weight"] = state_dict["update.weight.2.weight"][:2]
         state_dict["update.weight.2.bias"] = state_dict["update.weight.2.bias"][:2]
@@ -88,4 +96,3 @@ class Droid:
 
         camera_trajectory = self.traj_filler(stream)
         return camera_trajectory.inv().data.cpu().numpy()
-

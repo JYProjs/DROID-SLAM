@@ -15,19 +15,39 @@ import argparse
 
 from droid import Droid
 
-def image_stream(datapath, image_size=[384, 512], intrinsics_vec=[320.0, 320.0, 320.0, 240.0], stereo=False):
+# TartanAir image generator
+# def image_stream(datapath, image_size=[384, 512], intrinsics_vec=[320.0, 320.0, 320.0, 240.0], stereo=False):
+#     """ image generator """
+
+# Tissue image generator
+def image_stream(datapath, image_size=[384, 512], intrinsics_vec=[1489.625, 1252.336, 1066.375, 537.89], stereo=False):
     """ image generator """
 
     # read all png images in folder
-    ht0, wd0 = [480, 640]
-    images_left = sorted(glob.glob(os.path.join(datapath, 'image_left/*.png')))
-    images_right = sorted(glob.glob(os.path.join(datapath, 'image_right/*.png')))
+    # Tissue image resolution
+    ht0, wd0 = [1080, 1920]
+
+    # TartanAir image resolution
+    # ht0, wd0 = [480, 640]
+
+    # Load Tissue images
+    tissue_images = sorted(glob.glob(os.path.join(datapath, 'images_raw/*.jpg')))
+
+    # Load TartanAir images
+    # images_left = sorted(glob.glob(os.path.join(datapath, 'image_left/*.png')))
+    # images_right = sorted(glob.glob(os.path.join(datapath, 'image_right/*.png')))
 
     data = []
-    for t in range(len(images_left)):
-        images = [ cv2.resize(cv2.imread(images_left[t]), (image_size[1], image_size[0])) ]
-        if stereo:
-            images += [ cv2.resize(cv2.imread(images_right[t]), (image_size[1], image_size[0])) ]
+
+    # for t in range(len(images_left)):
+    
+    for t in range(len(tissue_images)):
+        images = [ cv2.resize(cv2.imread(tissue_images[t]), (image_size[1], image_size[0])) ]
+
+        # images = [ cv2.resize(cv2.imread(images_left[t]), (image_size[1], image_size[0])) ]
+
+        # if stereo:
+        #     images += [ cv2.resize(cv2.imread(images_right[t]), (image_size[1], image_size[0])) ]
 
         images = torch.from_numpy(np.stack(images, 0)).permute(0,3,1,2)
         intrinsics = .8 * torch.as_tensor(intrinsics_vec)
@@ -80,22 +100,28 @@ if __name__ == '__main__':
         torch.cuda.empty_cache()
         droid = Droid(args)
 
-        scenedir = os.path.join(args.datapath, scene)
+        # scenedir = os.path.join(args.datapath, scene)
         
-        for (tstamp, image, intrinsics) in tqdm(image_stream(scenedir, stereo=args.stereo)):
+        # for (tstamp, image, intrinsics) in tqdm(image_stream(scenedir, stereo=args.stereo)):
+
+        for (tstamp, image, intrinsics) in tqdm(image_stream(scene, stereo=args.stereo)):
             droid.track(tstamp, image, intrinsics=intrinsics)
 
         # fill in non-keyframe poses + global BA
-        traj_est = droid.terminate(image_stream(scenedir))
+        traj_est = droid.terminate(image_stream(scene))
+
+        # traj_est = droid.terminate(image_stream(scenedir))
 
         ### do evaluation ###
         evaluator = TartanAirEvaluator()
-        gt_file = os.path.join(scenedir, "pose_left.txt")
-        traj_ref = np.loadtxt(gt_file, delimiter=' ')[:, [1, 2, 0, 4, 5, 3, 6]] # ned -> xyz
+        gt_file = os.path.join(scene, "poses.txt")
+        # gt_file = os.path.join(scenedir, "pose_left.txt")
+        traj_ref = np.loadtxt(gt_file, delimiter=',')[:, [1, 2, 0, 4, 5, 3, 6]] # ned -> xyz
+        # traj_ref = np.loadtxt(gt_file, delimiter=' ')[:, [1, 2, 0, 4, 5, 3, 6]] # ned -> xyz
 
         # usually stereo should not be scale corrected, but we are comparing monocular and stereo here
         results = evaluator.evaluate_one_trajectory(
-            traj_ref, traj_est, scale=True, title=scenedir[-20:].replace('/', '_'))
+            traj_ref, traj_est, scale=True, title=scene[-20:].replace('/', '_'))
         
         print(results)
         ate_list.append(results["ate_score"])
