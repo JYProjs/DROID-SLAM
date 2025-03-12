@@ -78,28 +78,16 @@ def train(gpu, args):
 
     # fetch dataloaders
     db = dataset_factory(['tartan'], datapath=args.datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
-<<<<<<< HEAD
     val_db = dataset_factory(['tartan'], datapath=args.val_datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
-=======
-    # val_db = dataset_factory(['tartan'], datapath=args.val_datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
 
     # create distributed sampler
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         db, shuffle=True, num_replicas=args.world_size, rank=gpu)
-<<<<<<< HEAD
     val_sampler = torch.utils.data.distributed.DistributedSampler(
         val_db, shuffle=False, num_replicas=args.world_size, rank=gpu)
 
     train_loader = DataLoader(db, batch_size=args.batch, sampler=train_sampler, num_workers=2)
     val_loader = DataLoader(val_db, batch_size=2, sampler=val_sampler, num_workers=2)
-=======
-    # val_sampler = torch.utils.data.distributed.DistributedSampler(
-    #     val_db, shuffle=False, num_replicas=args.world_size, rank=gpu)
-
-    train_loader = DataLoader(db, batch_size=args.batch, sampler=train_sampler, num_workers=2)
-    # val_loader = DataLoader(val_db, batch_size=2, sampler=val_sampler, num_workers=2)
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
 
 
     # fetch optimizer
@@ -179,7 +167,6 @@ def train(gpu, args):
             tr_error = metrics.get('tr_error')
             f_error = metrics.get('f_error')
 
-<<<<<<< HEAD
             # validation loop
             if gpu == 0 and total_steps % 10 == 0:
                 model.eval()
@@ -224,35 +211,6 @@ def train(gpu, args):
                     },
                     step=total_steps)
             model.train()
-=======
-            # # validation loop
-            # if gpu == 0 and total_steps % 1000 == 0:
-            #     model.eval()
-            #     with torch.no_grad():
-            #         for v_batch, val_item in enumerate(val_loader):
-            #             images, poses, disps, intrinsics = [x.to('cuda') for x in val_item]
-
-            #             # convert poses w2c -> c2w
-            #             Ps = SE3(poses).inv()
-            #             Gs = SE3.IdentityLike(Ps)
-
-            #             # fix first to camera poses
-            #             Gs.data[:,0] = Ps.data[:,0].clone()
-            #             Gs.data[:,1:] = Ps.data[:,[1]].clone()
-            #             disp0 = torch.ones_like(disps[:,:,3::8,3::8])
-
-            #             val_graph = OrderedDict()
-            #             for i in range(N):
-            #                 val_graph[i] = [j for j in range(N) if i!=j and abs(i-j) <= 2]
-
-            #             poses_est, disps_est, residuals = model(Gs, images, disp0, intrinsics / 8.0,
-            #                 graph=val_graph, num_steps=args.iters, fixedp=2)
-
-            #             geo_loss, geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
-            #             res_loss, res_metrics = losses.residual_loss(residuals)
-            #             flo_loss, flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics)
-            
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
             # geo_loss_total += geo_loss
             # flo_loss_total += flo_loss
             # res_loss_total += res_loss
@@ -265,7 +223,6 @@ def train(gpu, args):
             #     loss_avg = loss_total / log_freq
 
             
-<<<<<<< HEAD
             
                 
                 # geo_loss_total = 0
@@ -279,9 +236,6 @@ def train(gpu, args):
 
             if gpu == 0:
                 wandb.log(
-=======
-            wandb.log(
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
                 {
                     "geo_loss":geo_loss,
                     "res_loss":res_loss,
@@ -293,20 +247,6 @@ def train(gpu, args):
                     "flo_error":f_error
                 },
                 step=total_steps)
-<<<<<<< HEAD
-=======
-                
-                # geo_loss_total = 0
-                # flo_loss_total = 0
-                # res_loss_total = 0
-                # loss_total = 0
-
-
-            
-            total_steps += 1
-
-            if gpu == 0:
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
                 logger.push(metrics)
 
             if total_steps % 10000 == 0 and gpu == 0:
@@ -316,11 +256,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-<<<<<<< HEAD
                 PATH = '/workspace/DROID_SLAM/trained_weights/fine_tune_droid/depth_1.0/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
-=======
-                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/02282025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -346,22 +282,13 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
     parser.add_argument('--steps', type=int, default=250000)
-<<<<<<< HEAD
     parser.add_argument('--lr', type=float, default=2.5e-7)
-=======
-    parser.add_argument('--lr', type=float, default=2.5e-8)
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
     parser.add_argument('--w1', type=float, default=10.0)
-<<<<<<< HEAD
     parser.add_argument('--w2', type=float, default=0.0001)
     parser.add_argument('--w3', type=float, default=0.05)
-=======
-    parser.add_argument('--w2', type=float, default=0.001)
-    parser.add_argument('--w3', type=float, default=0.025)
->>>>>>> d6f2df86912fdbffb50b6092f0004cbc6a1a4573
 
     parser.add_argument('--fmin', type=float, default=8.0)
     parser.add_argument('--fmax', type=float, default=96.0)
