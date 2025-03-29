@@ -61,13 +61,15 @@ RUN wget \
 ENV PATH="/root/miniconda3/bin:${PATH}"
 
 # Install Droid SLAM dependencies
-RUN conda install -y python=3.9
+# TODO: add minor version for python
+RUN conda install -y python=3.9.19
 
 RUN conda install -y pytorch==1.10.1 torchvision==0.11.2 torchaudio==0.10.1 cudatoolkit=11.3 -c pytorch -c conda-forge
 
-RUN pip install gdown matplotlib open3d opencv-python torch-scatter tensorboard scipy tqdm pyyaml evo
+RUN pip install gdown matplotlib==3.9.2 open3d==0.18.0 opencv-python==4.10.0.84 torch-scatter==2.1.2 tensorboard==2.17.1 scipy==1.13.1 tqdm==4.66.5 pyyaml==6.0.2 evo
 
-RUN conda install -y -c conda-forge suitesparse
+# what does this do?
+RUN conda install -y -c conda-forge suitesparse 
 
 # Clone repository
 WORKDIR /root
@@ -76,7 +78,7 @@ RUN git clone --recursive https://github.com/JYProjs/DROID-SLAM.git
 # Install extensions
 # pip install -e
 RUN cd DROID-SLAM && \
-    python setup.py develop
+    python setup.py install
 
 # Cleanup
 RUN rm -rf DROID_SLAM
