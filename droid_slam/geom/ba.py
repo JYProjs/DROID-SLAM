@@ -70,9 +70,16 @@ def BA(target, weight, eta, poses, disps, intrinsics, ii, jj, fixedp=1, rig=1):
     M = kx.shape[0]
 
     # only optimize keyframe poses
-    P = P // rig - fixedp
-    ii = ii // rig - fixedp
-    jj = jj // rig - fixedp
+    # P = P // rig - fixedp
+    P = torch.div(P, rig, rounding_mode='floor') - fixedp
+    
+    # Original floor division
+    # ii = ii // rig - fixedp
+    # jj = jj // rig - fixedp
+
+    # New floor division
+    ii = torch.div(ii, rig, rounding_mode='floor') - fixedp
+    jj = torch.div(jj, rig, rounding_mode='floor') - fixedp
 
     H = safe_scatter_add_mat(Hii, ii, ii, P, P) + \
         safe_scatter_add_mat(Hij, ii, jj, P, P) + \

@@ -6,6 +6,15 @@ class CholeskySolver(torch.autograd.Function):
     @staticmethod
     def forward(ctx, H, b):
         # don't crash training if cholesky decomp fails
+
+        # Additional check to ensure H is positive definite
+        # Symmetrize H to fix minor numerical asymmetries
+        H = (H + H.transpose(-1, -2)) / 2
+
+        # Add a small damping term to improve positive-definiteness
+        damping = 1e-6 * torch.eye(H.shape[-1], device=H.device)
+        H = H + damping
+
         try:
             U = torch.linalg.cholesky(H)
             xs = torch.cholesky_solve(b, U)
