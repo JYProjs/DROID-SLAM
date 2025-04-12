@@ -1,6 +1,7 @@
 import sys
 sys.path.append('droid_slam')
 
+import os
 import cv2
 import numpy as np
 from collections import OrderedDict
@@ -23,14 +24,13 @@ from logger import Logger
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-import wandb
+# import wandb
 
 
 
 def setup_ddp(gpu, args):
     dist.init_process_group(                                   
-    	backend='nccl',                                         
-   		init_method='env://',     
+    	backend='gloo',          # gloo on astra, nccl on apollo                               
     	world_size=args.world_size,                              
     	rank=gpu)
 
@@ -46,6 +46,9 @@ def train(gpu, args):
     """ Test to make sure project transform correctly maps points """
 
     # coordinate multiple GPUs
+
+
+    print("setting up ddp")
     setup_ddp(gpu, args)
     rng = np.random.default_rng(12345)
 
@@ -53,7 +56,7 @@ def train(gpu, args):
     model = DroidNet()
     model.cuda()
     model.train()
-
+    print("instantiating model")
     model = DDP(model, device_ids=[gpu], find_unused_parameters=False)
 
     # load pretrained weight
@@ -77,17 +80,19 @@ def train(gpu, args):
         model.load_state_dict(state_dict)
 
     # fetch dataloaders
+    print("fetching dataloader")
     db = dataset_factory(['tartan'], datapath=args.datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
-    val_db = dataset_factory(['tartan'], datapath=args.val_datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
+    
+    # val_db = dataset_factory(['tartan'], datapath=args.val_datapath, n_frames=args.n_frames, fmin=args.fmin, fmax=args.fmax)
 
     # create distributed sampler
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         db, shuffle=True, num_replicas=args.world_size, rank=gpu)
-    val_sampler = torch.utils.data.distributed.DistributedSampler(
-        val_db, shuffle=False, num_replicas=args.world_size, rank=gpu)
+    # val_sampler = torch.utils.data.distributed.DistributedSampler(
+    #     val_db, shuffle=False, num_replicas=args.world_size, rank=gpu)
 
     train_loader = DataLoader(db, batch_size=args.batch, sampler=train_sampler, num_workers=2)
-    val_loader = DataLoader(val_db, batch_size=2, sampler=val_sampler, num_workers=2)
+    # val_loader = DataLoader(val_db, batch_size=2, sampler=val_sampler, num_workers=2)
 
 
     # fetch optimizer
@@ -101,8 +106,8 @@ def train(gpu, args):
     # log_freq = 10
 
     # wandb.init
-    if gpu == 0:
-        run = wandb.init(project="droid_slam_laparoscope", config=args, save_code=True)
+    # if gpu == 0:
+    #     run = wandb.init(project="droid_slam_laparoscope", config=args, save_code=True)
 
     # geo_loss_total = 0
     # flo_loss_total = 0
@@ -168,49 +173,49 @@ def train(gpu, args):
             f_error = metrics.get('f_error')
 
             # validation loop
-            if gpu == 0 and total_steps % 10 == 0:
-                model.eval()
-                # make numpy arrays for metrics
-                val_rot_error = []
-                val_tr_error = []
-                val_f_error = []
-                with torch.no_grad():
-                    for v_batch, val_item in enumerate(val_loader):
-                        images, poses, disps, intrinsics = [x.to('cuda') for x in val_item]
+            # if gpu == 0 and total_steps % 10 == 0:
+            #     model.eval()
+            #     # make numpy arrays for metrics
+            #     val_rot_error = []
+            #     val_tr_error = []
+            #     val_f_error = []
+            #     with torch.no_grad():
+            #         for v_batch, val_item in enumerate(val_loader):
+            #             images, poses, disps, intrinsics = [x.to('cuda') for x in val_item]
 
-                        # convert poses w2c -> c2w
-                        Ps = SE3(poses).inv()
-                        Gs = SE3.IdentityLike(Ps)
+            #             # convert poses w2c -> c2w
+            #             Ps = SE3(poses).inv()
+            #             Gs = SE3.IdentityLike(Ps)
 
-                        # fix first to camera poses
-                        Gs.data[:,0] = Ps.data[:,0].clone()
-                        Gs.data[:,1:] = Ps.data[:,[1]].clone()
-                        disp0 = torch.ones_like(disps[:,:,3::8,3::8])
+            #             # fix first to camera poses
+            #             Gs.data[:,0] = Ps.data[:,0].clone()
+            #             Gs.data[:,1:] = Ps.data[:,[1]].clone()
+            #             disp0 = torch.ones_like(disps[:,:,3::8,3::8])
 
-                        val_graph = OrderedDict()
-                        for i in range(N):
-                            val_graph[i] = [j for j in range(N) if i!=j and abs(i-j) <= 2]
+            #             val_graph = OrderedDict()
+            #             for i in range(N):
+            #                 val_graph[i] = [j for j in range(N) if i!=j and abs(i-j) <= 2]
 
-                        poses_est, disps_est, residuals = model(Gs, images, disp0, intrinsics / 8.0,
-                            graph=val_graph, num_steps=args.iters, fixedp=2)
-                        geo_loss, geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
-                        res_loss, res_metrics = losses.residual_loss(residuals)
-                        flo_loss, flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics, val_graph)
-                        val_rot_error.append(geo_metrics.get('rot_error'))
-                        val_tr_error.append(geo_metrics.get('tr_error'))
-                        val_f_error.append(flo_metrics.get('f_error'))
+            #             poses_est, disps_est, residuals = model(Gs, images, disp0, intrinsics / 8.0,
+            #                 graph=val_graph, num_steps=args.iters, fixedp=2)
+            #             geo_loss, geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
+            #             res_loss, res_metrics = losses.residual_loss(residuals)
+            #             flo_loss, flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics, val_graph)
+            #             val_rot_error.append(geo_metrics.get('rot_error'))
+            #             val_tr_error.append(geo_metrics.get('tr_error'))
+            #             val_f_error.append(flo_metrics.get('f_error'))
 
-                val_rot_error = np.mean(val_rot_error)
-                val_tr_error = np.mean(val_tr_error)
-                val_f_error = np.mean(val_f_error)
-                wandb.log(
-                    {
-                        "val_rot_error":val_rot_error,
-                        "val_tr_error":val_tr_error,
-                        "val_f_error":val_f_error
-                    },
-                    step=total_steps)
-            model.train()
+            #     val_rot_error = np.mean(val_rot_error)
+            #     val_tr_error = np.mean(val_tr_error)
+            #     val_f_error = np.mean(val_f_error)
+            #     wandb.log(
+            #         {
+            #             "val_rot_error":val_rot_error,
+            #             "val_tr_error":val_tr_error,
+            #             "val_f_error":val_f_error
+            #         },
+            #         step=total_steps)
+            # model.train()
             # geo_loss_total += geo_loss
             # flo_loss_total += flo_loss
             # res_loss_total += res_loss
@@ -234,20 +239,20 @@ def train(gpu, args):
             
             total_steps += 1
 
-            if gpu == 0:
-                wandb.log(
-                {
-                    "geo_loss":geo_loss,
-                    "res_loss":res_loss,
-                    "flo_loss":flo_loss,
-                    "loss":loss,
-                    "lr":optimizer.param_groups[0]["lr"],
-                    "rot_error":rot_error,
-                    "tr_error":tr_error,
-                    "flo_error":f_error
-                },
-                step=total_steps)
-                logger.push(metrics)
+            # if gpu == 0:
+            #     wandb.log(
+            #     {
+            #         "geo_loss":geo_loss,
+            #         "res_loss":res_loss,
+            #         "flo_loss":flo_loss,
+            #         "loss":loss,
+            #         "lr":optimizer.param_groups[0]["lr"],
+            #         "rot_error":rot_error,
+            #         "tr_error":tr_error,
+            #         "flo_error":f_error
+            #     },
+            #     step=total_steps)
+            #     logger.push(metrics)
 
             if total_steps % 10000 == 0 and gpu == 0:
                 checkpoint = {
@@ -256,16 +261,16 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/fine_tune_droid/depth_1.0/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/trained_weights/03292025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
                 should_keep_training = False
                 break
-    wandb.finish(
-        exit_code = 0,
-        quiet = 0,
-    )
+    # wandb.finish(
+    #     exit_code = 0,
+    #     quiet = 0,
+    # )
     dist.destroy_process_group()
                 
 
@@ -297,10 +302,6 @@ if __name__ == '__main__':
     parser.add_argument('--edges', type=int, default=24)
     parser.add_argument('--restart_prob', type=float, default=0.2)
 
-    args = parser.parse_args()
-
-    args.world_size = args.gpus
-    print(args)
 
     import os
     if not os.path.isdir('checkpoints'):
@@ -308,7 +309,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     args.world_size = args.gpus
+    print(args)
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12406'
+    os.environ['MASTER_PORT'] = '12245'
     mp.spawn(train, nprocs=args.gpus, args=(args,))
