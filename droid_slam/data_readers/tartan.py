@@ -18,7 +18,7 @@ test_split = open(test_split).read().split()
 class TartanAir(RGBDDataset):
 
     # scale depths to balance rot & trans
-    DEPTH_SCALE = 1.0
+    DEPTH_SCALE = 7.0
     # DEPTH_SCALE = 5.0
 
     def __init__(self, mode='training', **kwargs):
@@ -36,8 +36,10 @@ class TartanAir(RGBDDataset):
         print("Building TartanAir dataset")
 
         scene_info = {}
-        # scenes = glob.glob(osp.join(self.root, '*/*/*/*'))
+
         scenes = glob.glob(osp.join(self.root, '*/'))
+        # scenes = glob.glob(osp.join(self.root, '*/*/*/*'))
+        
 
         for scene in tqdm(sorted(scenes)):
             images = sorted(glob.glob(osp.join(scene, 'images_raw/*.jpg')))
@@ -60,6 +62,8 @@ class TartanAir(RGBDDataset):
             scene = '/'.join(scene.split('/'))
             scene_info[scene] = {'images': images, 'depths': depths, 
                 'poses': poses, 'intrinsics': intrinsics, 'graph': graph}
+            
+
 
         return scene_info
 

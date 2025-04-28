@@ -29,7 +29,7 @@ import wandb
 
 def setup_ddp(gpu, args):
     dist.init_process_group(                                   
-    	backend='nccl',                                         
+    	backend='gloo',                                         
    		init_method='env://',     
     	world_size=args.world_size,                              
     	rank=gpu)
@@ -168,14 +168,16 @@ def train(gpu, args):
             f_error = metrics.get('f_error')
 
             # validation loop
-            if gpu == 0 and total_steps % 10 == 0:
+            if total_steps!=0 and total_steps % 5000 == 0:
                 model.eval()
                 # make numpy arrays for metrics
-                val_rot_error = []
-                val_tr_error = []
-                val_f_error = []
+                val_rot_error = 0.0
+                val_tr_error = 0.0
+                val_f_error = 0.0
                 with torch.no_grad():
                     for v_batch, val_item in enumerate(val_loader):
+                        if v_batch == 500:
+                            break
                         images, poses, disps, intrinsics = [x.to('cuda') for x in val_item]
 
                         # convert poses w2c -> c2w
@@ -193,45 +195,45 @@ def train(gpu, args):
 
                         poses_est, disps_est, residuals = model(Gs, images, disp0, intrinsics / 8.0,
                             graph=val_graph, num_steps=args.iters, fixedp=2)
-                        geo_loss, geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
-                        res_loss, res_metrics = losses.residual_loss(residuals)
-                        flo_loss, flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics, val_graph)
-                        val_rot_error.append(geo_metrics.get('rot_error'))
-                        val_tr_error.append(geo_metrics.get('tr_error'))
-                        val_f_error.append(flo_metrics.get('f_error'))
+                        val_geo_loss, val_geo_metrics = losses.geodesic_loss(Ps, poses_est, graph)
+                        # val_res_loss, val_res_metrics = losses.residual_loss(residuals)
+                        val_flo_loss, val_flo_metrics = losses.flow_loss(Ps, disps, poses_est, disps_est, intrinsics, val_graph)
+                        val_rot_error += (val_geo_metrics.get('rot_error'))
+                        val_tr_error += (val_geo_metrics.get('tr_error'))
+                        val_f_error += (val_flo_metrics.get('f_error'))
 
-                val_rot_error = np.mean(val_rot_error)
-                val_tr_error = np.mean(val_tr_error)
-                val_f_error = np.mean(val_f_error)
-                wandb.log(
-                    {
-                        "val_rot_error":val_rot_error,
-                        "val_tr_error":val_tr_error,
-                        "val_f_error":val_f_error
-                    },
-                    step=total_steps)
-            model.train()
-            # geo_loss_total += geo_loss
-            # flo_loss_total += flo_loss
-            # res_loss_total += res_loss
-            # loss_total += loss.item()
+                        # convert to tensors
+                        cuda0 = torch.device('cuda:0')
+                        tensor_val_rot_err = torch.tensor(val_rot_error, device=cuda0)
+                        tensor_val_tr_err = torch.tensor(val_tr_error, device=cuda0)
+                        tensor_val_f_err = torch.tensor(val_f_error, device=cuda0)
 
-            # if (total_steps+1) % log_freq == 0:
-            #     geo_loss_avg = geo_loss_total / log_freq
-            #     flo_loss_avg = flo_loss_total / log_freq
-            #     res_loss_avg = res_loss_total / log_freq
-            #     loss_avg = loss_total / log_freq
+                    # val_rot_error = np.mean(val_rot_error)
+                    # val_tr_error = np.mean(val_tr_error)
+                    # val_f_error = np.mean(val_f_error)
+                    dist.barrier()
+                    dist.all_reduce(tensor_val_rot_err, dist.ReduceOp.SUM, async_op=False)
+                    dist.all_reduce(tensor_val_tr_err, dist.ReduceOp.SUM, async_op=False)
+                    dist.all_reduce(tensor_val_f_err, dist.ReduceOp.SUM, async_op=False)
 
-            
-            
-                
-                # geo_loss_total = 0
-                # flo_loss_total = 0
-                # res_loss_total = 0
-                # loss_total = 0
+                    val_rot_error /= ((v_batch) * args.world_size)
+                    val_tr_error /= ((v_batch) * args.world_size)
+                    val_f_error /= ((v_batch) * args.world_size)
 
-
-            
+                if gpu==0:
+                    wandb.log(
+                        {
+                            # "val_geo_loss":val_geo_loss,
+                            # "val_res_loss":val_res_loss,
+                            # "val_flo_loss":val_flo_loss,
+                            "val_rot_error":val_rot_error,
+                            "val_tr_error":val_tr_error,
+                            "val_f_error":val_f_error
+                        },
+                        step=total_steps)
+                    
+                model.train()
+           
             total_steps += 1
 
             if gpu == 0:
@@ -256,7 +258,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/fine_tune_droid/depth_1.0/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/04282025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -282,13 +284,13 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
     parser.add_argument('--steps', type=int, default=250000)
-    parser.add_argument('--lr', type=float, default=2.5e-7)
+    parser.add_argument('--lr', type=float, default=2.5e-4)
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
     parser.add_argument('--w1', type=float, default=10.0)
-    parser.add_argument('--w2', type=float, default=0.0001)
-    parser.add_argument('--w3', type=float, default=0.05)
+    parser.add_argument('--w2', type=float, default=0.00)
+    parser.add_argument('--w3', type=float, default=0.00)
 
     parser.add_argument('--fmin', type=float, default=8.0)
     parser.add_argument('--fmax', type=float, default=96.0)
@@ -310,5 +312,5 @@ if __name__ == '__main__':
     args.world_size = args.gpus
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12406'
+    os.environ['MASTER_PORT'] = '12396'
     mp.spawn(train, nprocs=args.gpus, args=(args,))

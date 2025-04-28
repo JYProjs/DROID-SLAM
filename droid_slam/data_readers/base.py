@@ -70,6 +70,10 @@ class RGBDDataset(data.Dataset):
         """ compute optical flow distance between all pairs of frames """
         def read_disp(fn):
             depth = self.__class__.depth_read(fn)[f//2::f, f//2::f]
+
+            # scale depth from npy files, acquired from DepthAnything model
+            depth /= 10 
+            
             depth[depth < 0.01] = np.mean(depth)
             return 1.0 / depth
 
