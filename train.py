@@ -1,9 +1,10 @@
-import sys
+import sys, os
 sys.path.append('droid_slam')
 
 import cv2
 import numpy as np
 from collections import OrderedDict
+from datetime import datetime
 
 import torch
 import torch.optim as optim
@@ -153,9 +154,6 @@ def train(gpu, args):
                 disp0 = disps_est[-1][:,:,3::8,3::8].detach()
 
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-            optimizer.step()
-            scheduler.step()
             
             ## TRAINING METRICS
             metrics = {}
@@ -168,7 +166,7 @@ def train(gpu, args):
             f_error = metrics.get('f_error')
 
             # validation loop
-            if total_steps!=0 and total_steps % 5000 == 0:
+            if total_steps % 2000 == 0:
                 model.eval()
                 # make numpy arrays for metrics
                 val_rot_error = 0.0
@@ -234,6 +232,9 @@ def train(gpu, args):
                     
                 model.train()
            
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+            optimizer.step()
+            scheduler.step()
             total_steps += 1
 
             if gpu == 0:
@@ -258,7 +259,7 @@ def train(gpu, args):
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict()
                 }
-                PATH = '/workspace/DROID_SLAM/trained_weights/new_train/04282025/%s_%s_%06d.pth' % (run.id, args.name, total_steps)
+                PATH = '%s/%s_%s_%06d.pth' % (args.ckpt_save, run.id, args.name, total_steps)
                 torch.save(checkpoint, PATH)
 
             if total_steps >= args.steps:
@@ -276,6 +277,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', default='bla', help='name your experiment')
     parser.add_argument('--ckpt', help='checkpoint to restore')
+    parser.add_argument('--ckpt_save', default='/workspace/DROID_SLAM/trained_weights/fine_tune_droid/', help='directory to save ckpts')
     parser.add_argument('--datasets', nargs='+', help='lists of datasets for training')
     parser.add_argument('--datapath', default='datasets/TartanAir', help="path to training dataset directory")
     parser.add_argument('--val_datapath', help="path to validation dataset directory")
@@ -283,14 +285,14 @@ if __name__ == '__main__':
 
     parser.add_argument('--batch', type=int, default=1)
     parser.add_argument('--iters', type=int, default=15)
-    parser.add_argument('--steps', type=int, default=250000)
-    parser.add_argument('--lr', type=float, default=2.5e-4)
+    parser.add_argument('--steps', type=int, default=50000)
+    parser.add_argument('--lr', type=float, default=2.5e-6)
     parser.add_argument('--clip', type=float, default=2.5)
     parser.add_argument('--n_frames', type=int, default=7)
 
     parser.add_argument('--w1', type=float, default=10.0)
-    parser.add_argument('--w2', type=float, default=0.00)
-    parser.add_argument('--w3', type=float, default=0.00)
+    parser.add_argument('--w2', type=float, default=0.0001)
+    parser.add_argument('--w3', type=float, default=0.0)
 
     parser.add_argument('--fmin', type=float, default=8.0)
     parser.add_argument('--fmax', type=float, default=96.0)
@@ -300,11 +302,16 @@ if __name__ == '__main__':
     parser.add_argument('--restart_prob', type=float, default=0.2)
 
     args = parser.parse_args()
+    now = datetime.now()
+    args.ckpt_save = args.ckpt_save + now.strftime("%m%d%Y")
+    if not os.path.isdir(f'{args.ckpt_save}'):
+        os.mkdir(f'{args.ckpt_save}')
+        
+
 
     args.world_size = args.gpus
     print(args)
 
-    import os
     if not os.path.isdir('checkpoints'):
         os.mkdir('checkpoints')
 
@@ -312,5 +319,5 @@ if __name__ == '__main__':
     args.world_size = args.gpus
 
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12396'
+    os.environ['MASTER_PORT'] = '12376'
     mp.spawn(train, nprocs=args.gpus, args=(args,))

@@ -18,7 +18,7 @@ test_split = open(test_split).read().split()
 class TartanAir(RGBDDataset):
 
     # scale depths to balance rot & trans
-    DEPTH_SCALE = 7.0
+    DEPTH_SCALE = 1.0
     # DEPTH_SCALE = 5.0
 
     def __init__(self, mode='training', **kwargs):
@@ -42,7 +42,7 @@ class TartanAir(RGBDDataset):
         
 
         for scene in tqdm(sorted(scenes)):
-            images = sorted(glob.glob(osp.join(scene, 'images_raw/*.jpg')))
+            images = sorted(glob.glob(osp.join(scene, 'images/*.jpg')))
             depths = sorted(glob.glob(osp.join(scene, 'metric_depth/*.npy')))
 
             # images = sorted(glob.glob(osp.join(scene, 'image_left/*.png')))
@@ -54,6 +54,10 @@ class TartanAir(RGBDDataset):
 
             poses = poses[:, [1, 2, 0, 4, 5, 3, 6]]
             poses[:,:3] /= TartanAir.DEPTH_SCALE
+
+            # scale translational poses
+            poses[:,:3] *= 8.00
+
             intrinsics = [TartanAir.calib_read()] * len(images)
 
             # graph of co-visible frames based on flow
@@ -79,6 +83,10 @@ class TartanAir(RGBDDataset):
     @staticmethod
     def depth_read(depth_file):
         depth = np.load(depth_file) / TartanAir.DEPTH_SCALE
+
+        # scale depth
+        depth = np.load(depth_file) / 1
+        
         depth[depth==np.nan] = 1.0
         depth[depth==np.inf] = 1.0
         return depth
